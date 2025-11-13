@@ -1,29 +1,140 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Simple AR</title>
-  <style>
-    body { margin: 0; overflow: hidden; }
-    #arButton {
-      position: absolute;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      padding: 12px 20px;
-      background: #19b096;
-      color: white;
-      border: none;
-      border-radius: 10px;
-      font-size: 16px;
-    }
-  </style>
+    <meta charset="UTF-8" />
+    <title>AR GLB Placement</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+    </style>
+
+    <!-- THREE.JS -->
+    <script type="module">
+        import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.165/build/three.module.js";
+        import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.165/examples/jsm/loaders/GLTFLoader.js";
+        import { ARButton } from "https://cdn.jsdelivr.net/npm/three@0.165/examples/jsm/webxr/ARButton.js";
+
+        let camera, scene, renderer;
+        let reticle, hitTestSource = null, hitTestSourceRequested = false;
+        let placedObject = null;
+        let gltfModel = null;
+
+        init();
+        animate();
+
+        function init() {
+
+            // SCENE
+            scene = new THREE.Scene();
+
+            // CAMERA
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+
+            // RENDERER
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.xr.enabled = true;
+            document.body.appendChild(renderer.domElement);
+
+            // LIGHT
+            const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+            scene.add(light);
+
+            // RETICLE
+            reticle = new THREE.Mesh(
+                new THREE.RingGeometry(0.08, 0.1, 32).rotateX(-Math.PI / 2),
+                new THREE.MeshBasicMaterial({ color: 0x00ff88 })
+            );
+            reticle.matrixAutoUpdate = false;
+            reticle.visible = false;
+            scene.add(reticle);
+
+            // LOAD GLB terlebih dahulu (supaya cepat saat tap)
+            const loader = new GLTFLoader();
+            loader.load(
+                "./Bola.glb",
+                (gltf) => {
+                    gltfModel = gltf.scene;
+                    gltfModel.scale.set(0.2, 0.2, 0.2);
+                },
+                undefined,
+                (err) => console.error("Gagal load model:", err)
+            );
+
+            // AR BUTTON
+            const arButton = ARButton.createButton(renderer, {
+                requiredFeatures: ["hit-test"]
+            });
+            document.body.appendChild(arButton);
+
+            // TAP TO PLACE
+            window.addEventListener("click", () => {
+                if (!placedObject && reticle.visible && gltfModel) {
+                    placeGLB();
+                }
+            });
+        }
+
+        function placeGLB() {
+            const object = gltfModel.clone();
+
+            object.position.setFromMatrixPosition(reticle.matrix);
+            object.quaternion.setFromRotationMatrix(reticle.matrix);
+
+            scene.add(object);
+            placedObject = object;
+        }
+
+        function animate() {
+            renderer.setAnimationLoop(render);
+        }
+
+        function render(timestamp, frame) {
+            if (frame) {
+                const referenceSpace = renderer.xr.getReferenceSpace();
+                const session = renderer.xr.getSession();
+
+                if (!hitTestSourceRequested) {
+                    session.requestReferenceSpace("viewer").then((refSpace) => {
+                        session.requestHitTestSource({ space: refSpace }).then((source) => {
+                            hitTestSource = source;
+                        });
+                    });
+
+                    session.addEventListener("end", () => {
+                        hitTestSourceRequested = false;
+                        hitTestSource = null;
+                    });
+
+                    hitTestSourceRequested = true;
+                }
+
+                if (hitTestSource) {
+                    const hitTestResults = frame.getHitTestResults(hitTestSource);
+
+                    if (hitTestResults.length) {
+                        const pose = hitTestResults[0].getPose(referenceSpace);
+
+                        reticle.visible = true;
+                        reticle.matrix.fromArray(pose.transform.matrix);
+                    } else {
+                        reticle.visible = false;
+                    }
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+    </script>
+
 </head>
+
 <body>
-
-  <button id="arButton">Start AR</button>
-
-  <script type="module" src="script.js"></script>
 </body>
+
 </html>
