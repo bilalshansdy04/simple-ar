@@ -1,4 +1,5 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.165/build/three.module.js";
+import { GLTFLoader } from "https://cdn.jsdelivr.net/npm/three@0.165/examples/jsm/loaders/GLTFLoader.js";
 import { ARButton } from "https://cdn.jsdelivr.net/npm/three@0.165/examples/jsm/webxr/ARButton.js";
 
 let camera, scene, renderer;
@@ -12,6 +13,10 @@ function init() {
   // SCENE
   scene = new THREE.Scene();
 
+  // LIGHT
+  const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
+  scene.add(light);
+
   // CAMERA
   camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
 
@@ -21,7 +26,7 @@ function init() {
   renderer.xr.enabled = true;
   document.body.appendChild(renderer.domElement);
 
-  // RETICLE (penanda lantai)
+  // RETICLE (cari lantai)
   reticle = new THREE.Mesh(
     new THREE.RingGeometry(0.08, 0.1, 32).rotateX(-Math.PI / 2),
     new THREE.MeshBasicMaterial({ color: 0x19b096 })
@@ -30,23 +35,28 @@ function init() {
   reticle.visible = false;
   scene.add(reticle);
 
-  // BUTTON AR
+  // AR BUTTON
   const arButton = ARButton.createButton(renderer, {
-    requiredFeatures: ["hit-test"],
+    requiredFeatures: ["hit-test"]
   });
   document.getElementById("arButton").replaceWith(arButton);
 }
 
-function placeObject() {
-  const geometry = new THREE.BoxGeometry(0.2, 0.2, 0.2);
-  const material = new THREE.MeshStandardMaterial({ color: 0x19b096 });
-  const mesh = new THREE.Mesh(geometry, material);
+function placeGLB() {
+  const loader = new GLTFLoader();
+  loader.load("Bola.glb", (gltf) => {
+    const model = gltf.scene;
 
-  mesh.position.setFromMatrixPosition(reticle.matrix);
-  mesh.quaternion.setFromRotationMatrix(reticle.matrix);
+    // posisikan model tepat di lokasi reticle
+    model.position.setFromMatrixPosition(reticle.matrix);
+    model.quaternion.setFromRotationMatrix(reticle.matrix);
 
-  scene.add(mesh);
-  placedObject = mesh;
+    // skalakan kalau terlalu besar
+    model.scale.set(0.3, 0.3, 0.3);
+
+    scene.add(model);
+    placedObject = model;
+  });
 }
 
 function animate() {
@@ -82,9 +92,9 @@ function render(timestamp, frame) {
         reticle.visible = true;
         reticle.matrix.fromArray(pose.transform.matrix);
 
-        // Tap to place
+        // tap layar untuk place model
         window.addEventListener("click", () => {
-          if (!placedObject && reticle.visible) placeObject();
+          if (!placedObject && reticle.visible) placeGLB();
         });
       } else {
         reticle.visible = false;
